@@ -1,9 +1,8 @@
 from django.db import models
-
-from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
+import uuid
 
 
 class Listing(models.Model):
@@ -190,5 +189,6 @@ class Payment(models.Model):
         # Update booking status
         self.booking.status = 'confirmed'
         self.booking.save()
+
 
 
