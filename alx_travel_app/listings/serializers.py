@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Listing, Booking, Review
+from .models import Listing, Booking, Review, Payment
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -79,3 +79,44 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             'listing', 'check_in', 'check_out', 'guests_count', 
             'special_requests'
         ]
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    booking_details = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'amount', 'currency', 'status', 'payment_method',
+            'chapa_transaction_id', 'chapa_checkout_url', 'created_at',
+            'paid_at', 'customer_email', 'customer_first_name',
+            'customer_last_name', 'booking_details'
+        ]
+        read_only_fields = [
+            'id', 'chapa_transaction_id', 'chapa_checkout_url', 
+            'created_at', 'paid_at', 'status'
+        ]
+    
+    def get_booking_details(self, obj):
+        from .serializers import BookingSerializer
+        return BookingSerializer(obj.booking).data
+
+class PaymentInitiationSerializer(serializers.Serializer):
+    booking_id = serializers.UUIDField()
+    payment_method = serializers.ChoiceField(
+        choices=Payment.PAYMENT_METHOD_CHOICES,
+        default='chapa'
+    )
+    
+    def validate_booking_id(self, value):
+        from .models import Booking
+        try:
+            booking = Booking.objects.get(id=value)
+            if hasattr(booking, 'payment'):
+                raise serializers.ValidationError("Payment already exists for this booking")
+            return value
+        except Booking.DoesNotExist:
+            raise serializers.ValidationError("Booking not found")
+
+class PaymentVerificationSerializer(serializers.Serializer):
+    transaction_id = serializers.CharField(max_length=100)
