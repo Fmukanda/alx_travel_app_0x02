@@ -6,7 +6,9 @@ router = DefaultRouter()
 router.register(r'listings', ListingViewSet, basename='listing')
 router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'reviews', ReviewViewSet, basename='review')
+router.register(r'payments', PaymentViewSet, basename='payment')
 
 urlpatterns = [
     path('', include(router.urls)),
 ]
+
