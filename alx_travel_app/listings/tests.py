@@ -5,7 +5,15 @@ from rest_framework import status
 from .models import Listing, Booking, Review
 from datetime import date, timedelta
 import json
+from celery import shared_task
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.conf import settings
+from .models import Payment
+import logging
 
+logger = logging.getLogger(__name__)
 
 class ListingAPITestCase(APITestCase):
     def setUp(self):
@@ -288,3 +296,61 @@ class ErrorScenarioTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('not available', str(response.data))
+
+@shared_task
+def send_payment_confirmation_email(payment_id, customer_email):
+    """
+    Send payment confirmation email asynchronously
+    """
+    try:
+        payment = Payment.objects.get(id=payment_id)
+        booking = payment.booking
+        
+        subject = f'Payment Confirmation - Booking #{booking.id}'
+        
+        html_message = render_to_string('emails/payment_confirmation.html', {
+            'customer_name': f"{payment.customer_first_name} {payment.customer_last_name}",
+            'booking': booking,
+            'payment': payment,
+            'listing': booking.listing,
+        })
+        
+        plain_message = strip_tags(html_message)
+        
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[customer_email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        
+        logger.info(f"Payment confirmation email sent for payment {payment_id}")
+        
+    except Payment.DoesNotExist:
+        logger.error(f"Payment {payment_id} not found for email sending")
+    except Exception as e:
+        logger.error(f"Failed to send payment confirmation email: {str(e)}")
+
+@shared_task
+def verify_pending_payments():
+    """
+    Periodic task to verify pending payments
+    """
+    from .services.chapa_service import ChapaService
+    
+    pending_payments = Payment.objects.filter(
+        status__in=['pending', 'processing'],
+        created_at__gte=timezone.now() - timezone.timedelta(hours=24)
+    )
+    
+    chapa_service = ChapaService()
+    
+    for payment in pending_payments:
+        if payment.chapa_transaction_id:
+            result = chapa_service.verify_payment(payment.chapa_transaction_id)
+            
+            if result['success'] and result['status'] == 'success':
+                payment.mark_as_paid()
+                send_payment_confirmation_email.delay(payment.id, payment.customer_email)
