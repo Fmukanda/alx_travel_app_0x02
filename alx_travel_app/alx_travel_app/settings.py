@@ -14,6 +14,8 @@ from pathlib import Path
 import os
 import environ
 
+load_dotenv()
+
 # Initialize environment variables
 env = environ.Env()
 environ.Env.read_env()
@@ -33,6 +35,10 @@ DEBUG = env.bool('DEBUG', default=False)
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.vercel.app', '.herokuapp.com']
 
+# Chapa Configuration
+CHAPA_SECRET_KEY = os.getenv('CHAPA_SECRET_KEY')
+CHAPA_BASE_URL = os.getenv('CHAPA_BASE_URL', 'https://api.chapa.co/v1')
+CHAPA_WEBHOOK_SECRET = os.getenv('CHAPA_WEBHOOK_SECRET')
 
 # Application definition
 
@@ -174,3 +180,18 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC
+
+# Celery Configuration (for background tasks)
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+
+# Email Configuration (for payment confirmations)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = 'noreply@travelbooking.com'
+
+
