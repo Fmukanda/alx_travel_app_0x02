@@ -101,3 +101,94 @@ class Review(models.Model):
         ordering = ['-created_at']
         unique_together = ['booking', 'guest']  # One review per booking per guest
 
+
+class Payment(models.Model):
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+        ('refunded', 'Refunded'),
+    ]
+    
+    PAYMENT_METHOD_CHOICES = [
+        ('chapa', 'Chapa'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('card', 'Credit Card'),
+    ]
+
+    # Primary fields
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    booking = models.OneToOneField(
+        'Booking', 
+        on_delete=models.CASCADE, 
+        related_name='payment'
+    )
+    
+    # Payment details
+    amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0.01)]
+    )
+    currency = models.CharField(max_length=3, default='ETB')
+    status = models.CharField(
+        max_length=20, 
+        choices=PAYMENT_STATUS_CHOICES, 
+        default='pending'
+    )
+    payment_method = models.CharField(
+        max_length=20, 
+        choices=PAYMENT_METHOD_CHOICES, 
+        default='chapa'
+    )
+    
+    # Chapa specific fields
+    chapa_transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    chapa_checkout_url = models.URLField(blank=True, null=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    
+    # Additional info
+    customer_email = models.EmailField()
+    customer_first_name = models.CharField(max_length=100)
+    customer_last_name = models.CharField(max_length=100)
+    
+    # Error handling
+    error_message = models.TextField(blank=True, null=True)
+    retry_count = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['chapa_transaction_id']),
+            models.Index(fields=['booking']),
+        ]
+    
+    def __str__(self):
+        return f"Payment {self.id} - {self.booking} - {self.status}"
+    
+    @property
+    def is_successful(self):
+        return self.status == 'completed'
+    
+    @property
+    def can_retry(self):
+        return self.status in ['failed', 'cancelled'] and self.retry_count < 3
+    
+    def mark_as_paid(self):
+        from django.utils import timezone
+        self.status = 'completed'
+        self.paid_at = timezone.now()
+        self.save()
+        
+        # Update booking status
+        self.booking.status = 'confirmed'
+        self.booking.save()
+
+
